@@ -1,0 +1,21 @@
+# API 키 절대 업로드 금지
+.env
+secrets.toml
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 개발용 임시 파일
+*.log
+*.tmp
+*.bak
