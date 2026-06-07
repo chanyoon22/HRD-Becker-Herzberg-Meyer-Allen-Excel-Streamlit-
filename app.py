@@ -11,7 +11,7 @@ from plotly.subplots import make_subplots
 
 from simulator import (
     PolicyParams, simulate, sensitivity_analysis,
-    compare_scenarios, build_interpretation, BASELINE, ORG
+    compare_scenarios, build_interpretation, check_feasibility, BASELINE, ORG
 )
 from gemini_parser import parse_policy, DEMO_PARAMS, DEMO_SCENARIO_B
 
@@ -35,6 +35,30 @@ st.markdown("""
 [data-testid="stSidebar"] { background: #0D1B2A; }
 .main .block-container { padding: 1.5rem 2rem 3rem; max-width: 1400px; }
 
+/* 컬럼 내부 여백 제거 — 건물 이미지 최대화 */
+[data-testid="stHorizontalBlock"] > div:first-child {
+  padding-right: 0 !important;
+}
+[data-testid="stHorizontalBlock"] > div:first-child > div {
+  padding: 0 !important;
+}
+
+/* 빈 input 바 완전 제거 */
+[data-testid="stTextInput"] {
+  visibility: hidden;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+}
+[data-testid="stTextInput"] > div {
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
 /* 헤더 */
 .hrd-header { text-align:center; padding: 1.5rem 0 0.5rem; }
 .hrd-super  { font-size:0.9rem; letter-spacing:0.25em; color:#00E5FF;
@@ -43,24 +67,25 @@ st.markdown("""
               line-height:1.05; margin:0.1rem 0; }
 .hrd-sub    { font-size:1.05rem; color:#607D8B; margin-top:0.4rem; }
 
-/* 건물 이미지 컨테이너 */
+/* 건물 이미지 */
 .building-wrap {
-  text-align:center;
-  padding: 1rem 0;
-  animation: glow-pulse 3s ease-in-out infinite;
+  text-align: center;
+  padding: 0;
 }
 .building-wrap img {
-  width: 90%;
-  max-width: 600px;
-  filter: drop-shadow(0 0 40px #00E5FF88) drop-shadow(0 0 80px #00E5FF44);
+  width: 100%;
+  max-width: 9999px;
+  display: block;
+  filter: drop-shadow(0 0 40px #00E5FF99) drop-shadow(0 0 80px #00E5FF44);
+  animation: glow-pulse 3s ease-in-out infinite;
 }
 .building-caption {
   font-size:0.7rem; letter-spacing:0.3em; color:#00E5FF55;
-  text-transform:uppercase; margin-top:0.5rem;
+  text-transform:uppercase; margin-top:0.3rem;
 }
 @keyframes glow-pulse {
-  0%,100% { filter: drop-shadow(0 0 20px #00E5FF66); }
-  50%      { filter: drop-shadow(0 0 50px #00E5FFAA); }
+  0%,100% { filter: drop-shadow(0 0 30px #00E5FF66) drop-shadow(0 0 60px #00E5FF33); }
+  50%      { filter: drop-shadow(0 0 60px #00E5FFaa) drop-shadow(0 0 120px #00E5FF66); }
 }
 
 /* 유리 카드 */
@@ -220,6 +245,7 @@ for k, v in {
     "scenario_cmp": None,
     "proposal_text": None,
     "show_results": False,
+    "gemini_feasibility": None,
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -236,12 +262,10 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.divider()
-
 # ──────────────────────────────────────────────────────────────────
-# 상단 레이아웃: 건물(좌) + 입력(우)
+# 상단 레이아웃: 건물(좌, 크게) + 입력(우)
 # ──────────────────────────────────────────────────────────────────
-col_img, col_input = st.columns([4, 5], gap="large")
+col_img, col_input = st.columns([5, 4], gap="large")
 
 with col_img:
     b64 = get_building_b64()
@@ -276,12 +300,19 @@ with col_input:
         label_visibility="collapsed",
     )
 
-    api_key = st.text_input(
-        "Gemini API Key",
-        type="password",
-        placeholder="AIza... (데모 실행 시 생략 가능)",
-        label_visibility="collapsed",
-    )
+    # secrets.toml에서만 API 키 로딩 — 화면에 절대 노출 안 함
+    _secret_key = ""
+    try:
+        _secret_key = (
+            st.secrets.get("GEMINI_API_KEY", None)
+            or st.secrets.get("gemini_api_key", None)
+            or st.secrets.get("GEMINI_KEY", None)
+            or st.secrets.get("api_key", None)
+            or ""
+        )
+    except Exception:
+        _secret_key = ""
+    api_key = _secret_key
 
     btn_col1, btn_col2, btn_col3 = st.columns(3)
     with btn_col1:
@@ -328,7 +359,8 @@ if reset_btn:
     for i in range(0, 101, 20):
         time.sleep(0.05); bar.progress(i)
     for k in ["result","params","interp","sensitivity","policy_text",
-              "result_b","params_b","scenario_cmp","proposal_text","show_results"]:
+              "result_b","params_b","scenario_cmp","proposal_text",
+              "show_results","gemini_feasibility"]:
         st.session_state[k] = None if k != "policy_text" else ""
     st.session_state.show_results = False
     bar.empty()
@@ -360,7 +392,7 @@ if run_btn:
     if not policy_input.strip():
         st.warning("정책을 입력하세요.")
     elif not api_key.strip():
-        st.warning("Gemini API Key를 입력하세요. (없으면 💡 데모 실행을 사용하세요)")
+        st.warning("⚠️ Gemini API Key가 설정되지 않았습니다. `.streamlit/secrets.toml` 파일에서 `GEMINI_API_KEY`를 확인하세요. (없으면 💡 데모 실행을 사용하세요)")
     else:
         bar = st.progress(0, "AI 분석 중...")
         try:
@@ -383,6 +415,16 @@ if run_btn:
             st.session_state.sensitivity = sens
             st.session_state.show_results= True
             bar.progress(100); bar.empty()
+
+            # Gemini 파싱 결과 핵심 파라미터 요약 표시
+            st.info(
+                f"📊 **Gemini 파싱 결과** — "
+                f"연봉인상: {params.salary_raise}% | "
+                f"교육비: {params.edu_cost_rate}% | "
+                f"S인센티브: {params.sa_incentive}% | "
+                f"재택: 주{params.remote_days_per_week}일 | "
+                f"문화범위: {params.culture_scope or '미입력'}"
+            )
             st.success("✅ 분석 완료!")
             st.rerun()
         except Exception as e:
@@ -401,6 +443,62 @@ if st.session_state.show_results and st.session_state.result:
     cmp    = st.session_state.scenario_cmp
 
     st.divider()
+
+    # ── 현실 제약 경고 배너 ───────────────────────────────────
+    feasibility_issues = check_feasibility(params)
+    errors   = [i for i in feasibility_issues if i["level"] == "error"]
+    warnings = [i for i in feasibility_issues if i["level"] == "warning"]
+
+    if errors:
+        err_html = "".join([
+            f'<div style="margin:0.3rem 0;">'
+            f'<span style="color:#FF5252; font-weight:700;">🚨 [{i["param"]}]</span> '
+            f'<span style="color:#FFCDD2;">{i["msg"]}</span></div>'
+            for i in errors
+        ])
+        st.markdown(f"""
+        <div style="background:rgba(255,82,82,0.12); border:1px solid rgba(255,82,82,0.4);
+                    border-radius:10px; padding:1rem 1.2rem; margin-bottom:0.8rem;">
+          <div style="color:#FF5252; font-size:0.95rem; font-weight:700; margin-bottom:0.4rem;">
+            ⚠️ 현실 제약 위반 — 이 정책은 실제 도입이 어렵습니다
+          </div>
+          <div style="font-size:0.85rem; line-height:1.7;">{err_html}</div>
+          <div style="font-size:0.78rem; color:#607D8B; margin-top:0.5rem; border-top:1px solid rgba(255,82,82,0.2); padding-top:0.4rem;">
+            💡 시뮬레이터는 수식 기반 방향성 분석 도구입니다. 극단적 입력값은 ROI에 반영되지만,
+            운영 현실성·조직 수용성·법적 제약은 별도 검토가 필요합니다.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    if warnings and not errors:
+        warn_html = "".join([
+            f'<div style="margin:0.2rem 0;">'
+            f'<span style="color:#FFB300; font-weight:700;">⚠ [{i["param"]}]</span> '
+            f'<span style="color:#FFF9C4;">{i["msg"]}</span></div>'
+            for i in warnings
+        ])
+        st.markdown(f"""
+        <div style="background:rgba(255,179,0,0.08); border:1px solid rgba(255,179,0,0.3);
+                    border-radius:10px; padding:0.8rem 1.2rem; margin-bottom:0.8rem;">
+          <div style="color:#FFB300; font-size:0.9rem; font-weight:700; margin-bottom:0.3rem;">
+            📋 현실성 검토 권고
+          </div>
+          <div style="font-size:0.83rem; line-height:1.7;">{warn_html}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    elif warnings and errors:
+        warn_html = "".join([
+            f'<div style="margin:0.2rem 0;">'
+            f'<span style="color:#FFB300; font-weight:700;">⚠ [{i["param"]}]</span> '
+            f'<span style="color:#FFF9C4;">{i["msg"]}</span></div>'
+            for i in warnings
+        ])
+        st.markdown(f"""
+        <div style="background:rgba(255,179,0,0.06); border:1px solid rgba(255,179,0,0.25);
+                    border-radius:10px; padding:0.7rem 1.2rem; margin-bottom:0.8rem;">
+          <div style="font-size:0.83rem; line-height:1.7;">{warn_html}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # ── 등급 + KPI 카드 ───────────────────────────────────────
     grade = res["grade"]
@@ -651,6 +749,205 @@ if st.session_state.show_results and st.session_state.result:
                                     f'<span style="color:#607D8B;">{name}</span>'
                                     f'<span style="color:{color};font-weight:600;">{disp}</span></div>',
                                     unsafe_allow_html=True)
+
+        # ── Gemini 현실성 평가 섹션 ──────────────────────────────
+        st.markdown('<div class="sec-title" style="margin-top:1.5rem;">🤖 Gemini 현실성 평가</div>',
+                    unsafe_allow_html=True)
+        st.markdown('<div class="sec-sub">수식 계산값을 실제 HR 현장 지식으로 검증합니다 — AI의 현실적 판단과 수식 모델의 이론적 계산을 교차 분석</div>',
+                    unsafe_allow_html=True)
+
+        # 평가 요청 버튼
+        if "gemini_feasibility" not in st.session_state:
+            st.session_state.gemini_feasibility = None
+
+        if st.button("🤖 Gemini 현실성 평가 실행", use_container_width=True, key="btn_feasibility"):
+            if not api_key:
+                st.warning("secrets.toml에 GEMINI_API_KEY를 설정하세요.")
+            else:
+                with st.spinner("Gemini가 정책의 현실성을 분석 중..."):
+                    try:
+                        import httpx as _httpx
+
+                        # 현실제약 경고 요약
+                        feas = check_feasibility(params)
+                        feas_summary = "\n".join([
+                            f"- [{i['level'].upper()}] {i['param']}: {i['msg']}"
+                            for i in feas
+                        ]) if feas else "- 수식 기반 현실 제약 경고 없음"
+
+                        feasibility_prompt = f"""당신은 대기업 HR 전문가입니다.
+아래 조직 환경과 HRD 정책 시뮬레이션 결과를 검토하고, 현실적 관점에서 평가해주세요.
+
+[조직 환경]
+- 총 인원: 400명 (R&D 136명, 생산직 152명, 영업 36명, 관리 76명)
+- 평균 연봉: 7,000만원
+- 현재 이직자: 연 41명 (이직률 10.25%)
+- 현재 역량: 0.618 / 몰입도: 0.622
+- SK하이닉스 유사 반도체/제조업 기반 가상 기업
+
+[입력 정책]
+{st.session_state.policy_text or "(데모 파라미터)"}
+
+[수식 엔진 계산 결과]
+- 인사팀 승인 등급: {res['grade']}등급
+- 역량 변화: {res['delta_comp']:+.2%}
+- 이직의향 변화: {res['delta_turn']:+.2%} (이직자 {BASELINE['n_turnover']}명 → {res['new_n_turn']}명)
+- 몰입도 변화: {res['delta_commit']:+.2%}
+- ROI: {res['roi']:.1f}% / 순편익: {res['net_benefit']:,}만원
+
+[수식 기반 현실 제약 경고]
+{feas_summary}
+
+[요청 사항]
+아래 JSON 형식으로만 응답하세요. 설명이나 마크다운 없이 순수 JSON:
+{{
+  "overall_verdict": "현실적" | "주의 필요" | "비현실적",
+  "verdict_reason": "한 문장 핵심 판단 (50자 이내)",
+  "roi_assessment": "수식 ROI {res['roi']:.1f}%에 대한 현실적 평가 (2~3문장)",
+  "critical_risks": [
+    "현실 도입 시 가장 큰 리스크 1",
+    "현실 도입 시 가장 큰 리스크 2",
+    "현실 도입 시 가장 큰 리스크 3"
+  ],
+  "dept_specific": {{
+    "RnD": "R&D 136명에 대한 정책 적합성 한 줄 평가",
+    "production": "생산직 152명에 대한 정책 적합성 한 줄 평가",
+    "sales": "영업 36명에 대한 정책 적합성 한 줄 평가",
+    "admin": "관리 76명에 대한 정책 적합성 한 줄 평가"
+  }},
+  "model_vs_reality": "수식 모델 결과와 현실 사이의 가장 큰 차이점 (2~3문장)",
+  "recommendation": "현실성을 높이기 위한 수정 권고안 2~3가지 (구체적 수치 포함)"
+}}"""
+
+                        resp = _httpx.post(
+                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+                            json={
+                                "contents": [{"parts": [{"text": feasibility_prompt}]}],
+                                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2000},
+                            },
+                            headers={"Content-Type": "application/json",
+                                     "x-goog-api-key": api_key},
+                            timeout=45,
+                        )
+                        resp.raise_for_status()
+                        raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+
+                        # JSON 파싱 (gemini_parser의 _clean_json 재사용)
+                        import re as _re, json as _json
+                        raw = _re.sub(r"```(?:json)?|```", "", raw).strip()
+                        s = raw.find("{"); e = raw.rfind("}")
+                        if s != -1 and e != -1:
+                            raw = raw[s:e+1]
+                        raw = _re.sub(r"//[^\n]*", "", raw)
+                        raw = _re.sub(r",\s*([}\]])", r"\1", raw)
+
+                        try:
+                            st.session_state.gemini_feasibility = _json.loads(raw)
+                        except Exception:
+                            # 파싱 실패 시 raw 텍스트 저장
+                            st.session_state.gemini_feasibility = {"_raw": raw}
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gemini 현실성 평가 실패: {e}")
+
+        # 평가 결과 표시
+        gf = st.session_state.gemini_feasibility
+        if gf:
+            if "_raw" in gf:
+                # 파싱 실패 시 원문 표시
+                st.markdown(f"""
+                <div class="interp-box">
+                  <div class="interp-title">🤖 Gemini 현실성 평가 (원문)</div>
+                  <div style="font-size:0.88rem; white-space:pre-wrap;">{gf['_raw']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                # 종합 판정 배지
+                verdict = gf.get("overall_verdict", "")
+                v_color = {"현실적": "#00C853", "주의 필요": "#FFB300", "비현실적": "#FF5252"}.get(verdict, "#607D8B")
+                v_icon  = {"현실적": "✅", "주의 필요": "⚠️", "비현실적": "🚨"}.get(verdict, "")
+
+                st.markdown(f"""
+                <div style="background:rgba(13,27,42,0.9); border:2px solid {v_color};
+                            border-radius:12px; padding:1.2rem 1.5rem; margin:0.8rem 0;">
+                  <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.8rem;">
+                    <div style="font-size:2.5rem;">{v_icon}</div>
+                    <div>
+                      <div style="font-size:1.3rem; font-weight:800; color:{v_color};">{verdict}</div>
+                      <div style="font-size:0.95rem; color:#B0BEC5; margin-top:0.2rem;">{gf.get('verdict_reason','')}</div>
+                    </div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # ROI 현실성 평가
+                st.markdown(f"""
+                <div class="interp-box">
+                  <div class="interp-title">📊 수식 ROI {res['roi']:.1f}%에 대한 현실적 평가</div>
+                  <div style="font-size:0.92rem; line-height:1.7;">{gf.get('roi_assessment','')}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # 수식 vs 현실 차이
+                st.markdown(f"""
+                <div class="interp-box">
+                  <div class="interp-title">🔬 수식 모델 vs 현실 — 핵심 차이</div>
+                  <div style="font-size:0.92rem; line-height:1.7;">{gf.get('model_vs_reality','')}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # 핵심 리스크 3가지
+                risks = gf.get("critical_risks", [])
+                if risks:
+                    risks_html = "".join([
+                        f'<div style="display:flex; gap:0.8rem; margin:0.4rem 0; align-items:flex-start;">'
+                        f'<span style="color:#FF5252; font-weight:700; min-width:1.5rem;">{i+1}.</span>'
+                        f'<span style="color:#CFD8DC; font-size:0.9rem;">{r}</span></div>'
+                        for i, r in enumerate(risks)
+                    ])
+                    st.markdown(f"""
+                    <div class="interp-box">
+                      <div class="interp-title">🚨 현실 도입 시 핵심 리스크</div>
+                      {risks_html}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                # 직군별 적합성
+                dept_spec = gf.get("dept_specific", {})
+                if dept_spec:
+                    dept_map = {
+                        "RnD": ("🔬 R&D", "RnD"),
+                        "production": ("🏭 생산", "production"),
+                        "sales": ("💼 영업", "sales"),
+                        "admin": ("🗂️ 관리/지원", "admin"),
+                    }
+                    dept_cols = st.columns(4)
+                    for col, (label, key) in zip(dept_cols, dept_map.values()):
+                        with col:
+                            st.markdown(f"""
+                            <div style="background:rgba(0,229,255,0.04);
+                                        border:1px solid rgba(0,229,255,0.15);
+                                        border-radius:8px; padding:0.8rem; text-align:center;">
+                              <div style="font-size:0.85rem; font-weight:700;
+                                          color:#00E5FF; margin-bottom:0.5rem;">{label}</div>
+                              <div style="font-size:0.78rem; color:#B0BEC5; line-height:1.5;">
+                                {dept_spec.get(key, '—')}
+                              </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                # 수정 권고안
+                rec = gf.get("recommendation", "")
+                if rec:
+                    st.markdown(f"""
+                    <div style="background:rgba(0,200,83,0.06); border:1px solid rgba(0,200,83,0.25);
+                                border-radius:10px; padding:1rem 1.2rem; margin-top:0.5rem;">
+                      <div style="color:#00C853; font-size:0.9rem; font-weight:700; margin-bottom:0.4rem;">
+                        💡 현실성 강화 수정 권고안
+                      </div>
+                      <div style="font-size:0.88rem; color:#CFD8DC; line-height:1.7; white-space:pre-wrap;">{rec}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
     # ────────────────────────────────────────────────────────
     # TAB 2: 직군별 분해
@@ -1063,8 +1360,19 @@ if st.session_state.show_results and st.session_state.result:
         with gen_col2:
             proposal_tone  = st.selectbox("문체", ["공식 보고서체", "실무 제안서체", "PT 발표 대본"], key="p_tone")
             proposal_pages = st.selectbox("분량", ["A4 1페이지 분량", "A4 2페이지 분량", "요약본 (5줄)"], key="p_pages")
-            proposal_key   = st.text_input("Gemini API Key (제안서용)", type="password",
-                                           placeholder="API Key 입력", key="p_api")
+            # API 키는 secrets.toml에서만 읽음 — 화면 노출 없음
+            _p_key = ""
+            try:
+                _p_key = (
+                    st.secrets.get("GEMINI_API_KEY", None)
+                    or st.secrets.get("gemini_api_key", None)
+                    or st.secrets.get("GEMINI_KEY", None)
+                    or st.secrets.get("api_key", None)
+                    or ""
+                )
+            except Exception:
+                _p_key = ""
+            proposal_key = _p_key
 
         with gen_col1:
             st.markdown(f"""
@@ -1087,45 +1395,59 @@ if st.session_state.show_results and st.session_state.result:
                 with st.spinner("Gemini가 제안서를 작성 중입니다..."):
                     try:
                         import httpx, re as re_
-                        prompt = f"""
-당신은 대기업 HR 컨설턴트입니다. 아래 HRD 정책 시뮬레이션 결과를 바탕으로
-인사팀에 제출할 정책 제안서를 작성하세요.
 
-[문체: {proposal_tone}]
-[분량: {proposal_pages}]
+                        page_guide = {
+                            "A4 1페이지 분량": "A4 1페이지 분량(약 700~900자 한국어). 각 섹션을 간결하지만 완결성 있게 작성.",
+                            "A4 2페이지 분량": "A4 2페이지 분량(약 1500~2000자 한국어). 각 섹션을 충분히 풀어서 작성.",
+                            "요약본 (5줄)": "핵심만 5줄 이내로 요약. 각 줄은 완결된 문장으로.",
+                        }.get(proposal_pages, "A4 1페이지 분량")
 
-=== 입력 정책 ===
+                        tone_guide = {
+                            "공식 보고서체": "공식 보고서 문체(경어, ~합니다/~입니다, 번호 목록 구조)",
+                            "실무 제안서체": "실무 제안서 문체(간결하고 명확하게, 핵심 위주)",
+                            "PT 발표 대본": "PT 발표 대본 형식(슬라이드 제목 + 핵심 멘트 구조)",
+                        }.get(proposal_tone, "공식 보고서체")
+
+                        prompt = f"""당신은 대기업 HR 컨설턴트입니다.
+아래 HRD 정책 시뮬레이션 결과를 바탕으로 인사팀장에게 제출하는 완성된 정책 제안서를 작성하세요.
+
+[작성 규칙]
+- 분량: {page_guide}
+- 문체: {tone_guide}
+- 반드시 아래 7개 섹션을 모두 포함할 것
+- 수치는 반드시 시뮬레이션 결과값을 그대로 인용할 것
+- 추상적 표현 금지, 구체적 수치와 이론명을 반드시 명기
+- 제안서 형식: 제목, 작성일, 작성자, 수신자 포함
+
+[반드시 포함할 7개 섹션]
+1. 제안 배경 및 목적: 현재 조직 현황(이직자 {BASELINE['n_turnover']}명/년, 역량 {BASELINE['competency']:.3f}, 몰입도 {BASELINE['commitment']:.3f}) 기반으로 문제의식 서술
+2. 제안 정책 요약: 입력된 정책 내용을 3~5개 항목으로 정리
+3. 예상 효과 (수치 포함):
+   - 역량: {BASELINE['competency']:.3f} → {res['new_comp']:.3f} ({res['delta_comp']:+.2%}) [Becker 인적자본론 α=0.20]
+   - 이직의향: {BASELINE['turnover']:.3f} → {res['new_turn']:.3f}, 연간 이직자 {BASELINE['n_turnover']}명 → {res['new_n_turn']}명 ({res['turn_reduction']}명 감소) [Herzberg β=0.72]
+   - 몰입도: {BASELINE['commitment']:.3f} → {res['new_commit']:.3f} ({res['delta_commit']:+.2%}) [Meyer&Allen γ=0.58]
+4. 비용·편익 분석: 총 투자비용 {res['cost']['total']:,}만원, 총 편익 {res['benefit']['total']:,}만원, 순편익 {res['net_benefit']:,}만원, NET ROI {res['roi']:.1f}%
+5. 직군별 중점 효과:
+   - R&D(136명): 역량Δ {res['dept']['R&D']['delta_comp']:+.2%}, 이직Δ {res['dept']['R&D']['delta_turn']:+.2%}, 몰입Δ {res['dept']['R&D']['delta_commit']:+.2%}
+   - 생산(152명): 역량Δ {res['dept']['생산']['delta_comp']:+.2%}, 이직Δ {res['dept']['생산']['delta_turn']:+.2%}, 몰입Δ {res['dept']['생산']['delta_commit']:+.2%}
+   - 영업(36명): 역량Δ {res['dept']['영업']['delta_comp']:+.2%}, 이직Δ {res['dept']['영업']['delta_turn']:+.2%}, 몰입Δ {res['dept']['영업']['delta_commit']:+.2%}
+   - 관리/지원(76명): 역량Δ {res['dept']['관리/지원']['delta_comp']:+.2%}, 이직Δ {res['dept']['관리/지원']['delta_turn']:+.2%}, 몰입Δ {res['dept']['관리/지원']['delta_commit']:+.2%}
+6. 이론적 근거: Becker(1964) 인적자본론, Herzberg(1968) 2요인론, Meyer&Allen(1991) 3요소 몰입 이론을 각 수치와 연결하여 설명
+7. 실행 로드맵: 단계별(1개월/3개월/6개월) 실행 계획과 기대 효과
+
+[입력 정책 원문]
 {st.session_state.policy_text or '(파라미터 직접 입력)'}
 
-=== 시뮬레이션 결과 ===
-- 인사팀 승인 등급: {res['grade']}등급
-- 역량 향상: {res['delta_comp']:.2%} (Baseline {BASELINE['competency']:.3f} → {res['new_comp']:.3f})
-- 이직의향 변화: {res['delta_turn']:.2%} (연간 이직자 {BASELINE['n_turnover']}명 → {res['new_n_turn']}명, {res['turn_reduction']}명 감소)
-- 몰입도 향상: {res['delta_commit']:.2%} (Baseline {BASELINE['commitment']:.3f} → {res['new_commit']:.3f})
-- 총 투자비용: {res['cost']['total']:,}만원
-- 총 편익: {res['benefit']['total']:,}만원
-- 순편익: {res['net_benefit']:,}만원
-- NET ROI: {res['roi']:.1f}%
+[인사팀 승인 등급: {res['grade']}등급]
 
-=== 직군별 효과 ===
-R&D(136명): 역량Δ {res['dept']['R&D']['delta_comp']:.3f}, 이직Δ {res['dept']['R&D']['delta_turn']:.3f}, 몰입Δ {res['dept']['R&D']['delta_commit']:.3f}
-생산(152명): 역량Δ {res['dept']['생산']['delta_comp']:.3f}, 이직Δ {res['dept']['생산']['delta_turn']:.3f}, 몰입Δ {res['dept']['생산']['delta_commit']:.3f}
-영업(36명): 역량Δ {res['dept']['영업']['delta_comp']:.3f}, 이직Δ {res['dept']['영업']['delta_turn']:.3f}, 몰입Δ {res['dept']['영업']['delta_commit']:.3f}
-관리/지원(76명): 역량Δ {res['dept']['관리/지원']['delta_comp']:.3f}, 이직Δ {res['dept']['관리/지원']['delta_turn']:.3f}, 몰입Δ {res['dept']['관리/지원']['delta_commit']:.3f}
-
-=== 이론 근거 ===
-- Becker(1964) 인적자본론: 학습→역량 효율 α=0.20
-- Herzberg(1968) 2요인론: 보상→이직방지 탄력성 β=0.72
-- Meyer&Allen(1991) 3요소 몰입: 문화→몰입 승수 γ=0.58
-
-제안서를 완성된 형태로 작성하세요. 제목, 날짜, 작성자 포함.
+지금 바로 완성된 제안서 본문을 작성하세요. 설명이나 메타 언급 없이 제안서 그 자체만 출력하세요.
 """
                         resp = httpx.post(
-                            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
                             json={"contents": [{"parts": [{"text": prompt}]}],
-                                  "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2000}},
-                            headers={"Content-Type":"application/json", "x-goog-api-key": key_to_use},
-                            timeout=45,
+                                  "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4000}},
+                            headers={"Content-Type": "application/json", "x-goog-api-key": key_to_use},
+                            timeout=60,
                         )
                         resp.raise_for_status()
                         data = resp.json()
@@ -1143,13 +1465,94 @@ R&D(136명): 역량Δ {res['dept']['R&D']['delta_comp']:.3f}, 이직Δ {res['dep
             """, unsafe_allow_html=True)
             st.markdown(st.session_state.proposal_text)
             st.markdown('</div>', unsafe_allow_html=True)
-            st.download_button(
-                "📋 제안서 텍스트 복사 (다운로드)",
-                data=st.session_state.proposal_text,
-                file_name="HRD_정책제안서.txt",
-                mime="text/plain",
-                use_container_width=True,
-            )
+
+            # PDF 다운로드
+            try:
+                from pdf_report import _register_font
+                import io
+                from reportlab.lib.pagesizes import A4
+                from reportlab.lib import colors
+                from reportlab.lib.units import cm
+                from reportlab.lib.styles import ParagraphStyle
+                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+                from datetime import datetime
+
+                buf = io.BytesIO()
+                font = _register_font()
+                doc = SimpleDocTemplate(buf, pagesize=A4,
+                                        rightMargin=2.5*cm, leftMargin=2.5*cm,
+                                        topMargin=2.5*cm, bottomMargin=2.5*cm)
+                C_NAVY = colors.HexColor("#0D1B2A")
+                C_CYAN = colors.HexColor("#0077AA")
+                C_GRAY = colors.HexColor("#607D8B")
+                C_BODY = colors.HexColor("#1A1A2E")
+
+                s_title = ParagraphStyle("pt", fontName=font, fontSize=16,
+                                         textColor=C_NAVY, alignment=1, spaceAfter=4, leading=22)
+                s_meta  = ParagraphStyle("pm", fontName=font, fontSize=9,
+                                         textColor=C_GRAY, alignment=1, spaceAfter=2)
+                s_body  = ParagraphStyle("pb", fontName=font, fontSize=10,
+                                         textColor=C_BODY, leading=17, spaceAfter=4,
+                                         leftIndent=0)
+                s_h     = ParagraphStyle("ph", fontName=font, fontSize=11,
+                                         textColor=C_CYAN, leading=16,
+                                         spaceBefore=8, spaceAfter=3)
+
+                story = []
+                story.append(Spacer(1, 0.5*cm))
+                story.append(Paragraph("HRD 정책 제안서", s_title))
+                story.append(Paragraph(
+                    f"생성일시: {datetime.now().strftime('%Y년 %m월 %d일')} | "
+                    f"등급: {res['grade']}등급 | 박찬윤 | 삼육대학교",
+                    s_meta))
+                story.append(Spacer(1, 0.3*cm))
+                story.append(HRFlowable(width="100%", thickness=0.5,
+                                        color=colors.HexColor("#1E3A5F")))
+                story.append(Spacer(1, 0.4*cm))
+
+                # 제안서 본문 — 줄 단위로 파싱해서 h/body 구분
+                for line in st.session_state.proposal_text.split("\n"):
+                    line = line.strip()
+                    if not line:
+                        story.append(Spacer(1, 0.15*cm))
+                        continue
+                    # **굵게** 마크다운 제거
+                    clean = line.replace("**", "")
+                    # 섹션 헤더 판별 (숫자. 로 시작하거나 ## 등)
+                    if (clean[:2].strip().rstrip(".").isdigit() and len(clean) > 3) \
+                       or clean.startswith("##") or clean.startswith("■") \
+                       or (len(clean) < 40 and clean.endswith(":")):
+                        clean = clean.lstrip("#").strip()
+                        story.append(Paragraph(clean, s_h))
+                    else:
+                        story.append(Paragraph(clean, s_body))
+
+                story.append(Spacer(1, 0.5*cm))
+                story.append(HRFlowable(width="100%", thickness=0.5,
+                                        color=colors.HexColor("#1E3A5F")))
+                story.append(Paragraph(
+                    "HRD Policy Simulator | Becker × Herzberg × Meyer&Allen | 박찬윤",
+                    s_meta))
+
+                doc.build(story)
+                pdf_bytes = buf.getvalue()
+
+                st.download_button(
+                    "📄 제안서 PDF 다운로드",
+                    data=pdf_bytes,
+                    file_name=f"HRD_정책제안서_{res['grade']}등급.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+            except Exception as e:
+                # fallback: txt
+                st.download_button(
+                    "📋 제안서 텍스트 다운로드",
+                    data=st.session_state.proposal_text,
+                    file_name="HRD_정책제안서.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                )
 
     # ────────────────────────────────────────────────────────
     # TAB 8: PDF 리포트 다운로드

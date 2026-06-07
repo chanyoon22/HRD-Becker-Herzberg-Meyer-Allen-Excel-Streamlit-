@@ -93,8 +93,8 @@ def generate_pdf(
 
     s_title   = sty("title",   22, color=C_NAVY,   align="CENTER")
     s_sub     = sty("sub",     11, color=C_GRAY,   align="CENTER")
-    s_h1      = sty("h1",      14, color=C_CYAN)
-    s_h2      = sty("h2",      11, color=C_PANEL)
+    s_h1      = sty("h1",      14, color=colors.HexColor("#0077AA"))
+    s_h2      = sty("h2",      11, color=colors.HexColor("#004466"))
     s_body    = sty("body",    10, color=C_NAVY,   leading=15)
     s_small   = sty("small",    9, color=C_GRAY)
     s_grade   = sty("grade",   36, color=C_CYAN,   align="CENTER")
@@ -155,15 +155,20 @@ def generate_pdf(
     # ▌승인 등급
     g = result["grade"]
     g_col = grade_color.get(g, C_GRAY)
-    grade_sty = ParagraphStyle("gs", fontName=font, fontSize=40,
-                               textColor=g_col, alignment=1)
+    grade_sty = ParagraphStyle("gs", fontName=font, fontSize=72,
+                               textColor=g_col, alignment=1, leading=90)
+    grade_label_sty = ParagraphStyle("gl", fontName=font, fontSize=14,
+                                     textColor=g_col, alignment=1, leading=20)
     grade_labels = {"S":"최우수", "A":"우수", "B":"양호", "C":"보통", "F":"재검토"}
     story += [
         H("🏆 인사팀 승인 예측 등급"),
+        SP(0.6),
         Paragraph(g, grade_sty),
-        Paragraph(grade_labels.get(g,""), s_sub),
+        SP(0.3),
+        Paragraph(grade_labels.get(g, ""), grade_label_sty),
+        SP(0.4),
         P(interp.get("grade", "")),
-        SP(0.3), HR(), SP(0.3),
+        SP(0.5), HR(), SP(0.3),
     ]
 
     # ▌핵심 KPI 요약

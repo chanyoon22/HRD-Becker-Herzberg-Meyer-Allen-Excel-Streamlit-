@@ -56,6 +56,31 @@ JSON 스키마:
 }"""
 
 
+def _clean_json(raw: str) -> str:
+    """Gemini 응답에서 순수 JSON만 추출"""
+    # 1) 마크다운 코드블록 제거
+    raw = re.sub(r"```(?:json)?", "", raw)
+    raw = re.sub(r"```", "", raw)
+    raw = raw.strip()
+
+    # 2) JSON 오브젝트 부분만 추출 (첫 { ~ 마지막 } )
+    start = raw.find("{")
+    end   = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        raw = raw[start:end + 1]
+
+    # 3) 한국어 주석 제거 (// 이후 줄 끝까지)
+    raw = re.sub(r"//[^\n]*", "", raw)
+
+    # 4) 줄 끝 trailing comma 제거 (JSON 표준 위반)
+    raw = re.sub(r",\s*([}\]])", r"\1", raw)
+
+    # 5) 제어문자 제거 (탭·줄바꿈 제외)
+    raw = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", raw)
+
+    return raw
+
+
 def parse_policy(policy_text: str, api_key: str) -> PolicyParams:
     """자유 서술 → PolicyParams 변환"""
     headers = {
@@ -72,9 +97,41 @@ def parse_policy(policy_text: str, api_key: str) -> PolicyParams:
         resp.raise_for_status()
         data = resp.json()
         raw  = data["candidates"][0]["content"]["parts"][0]["text"]
-        raw  = re.sub(r"```(?:json)?|```", "", raw).strip()
-        parsed = json.loads(raw)
-        return _dict_to_params(parsed)
+
+        cleaned = _clean_json(raw)
+
+        # 1차 시도: 정상 파싱
+        try:
+            parsed = json.loads(cleaned)
+            return _dict_to_params(parsed)
+        except json.JSONDecodeError:
+            pass
+
+        # 2차 시도: 작은따옴표 → 큰따옴표 치환 후 재시도
+        try:
+            fixed = cleaned.replace("'", '"')
+            parsed = json.loads(fixed)
+            return _dict_to_params(parsed)
+        except json.JSONDecodeError:
+            pass
+
+        # 3차 시도: 키-값 정규식으로 직접 추출
+        extracted = {}
+        # 숫자 값
+        for m in re.finditer(r'"(\w+)"\s*:\s*(-?[\d.]+)', cleaned):
+            extracted[m.group(1)] = float(m.group(2))
+        # 문자열 값
+        for m in re.finditer(r'"(\w+)"\s*:\s*"([^"]*)"', cleaned):
+            if m.group(1) not in extracted:
+                extracted[m.group(1)] = m.group(2)
+
+        if extracted:
+            return _dict_to_params(extracted)
+
+        raise RuntimeError("JSON 구조를 파악할 수 없습니다")
+
+    except RuntimeError:
+        raise
     except Exception as e:
         raise RuntimeError(f"Gemini 파싱 실패: {e}")
 

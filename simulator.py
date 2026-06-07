@@ -407,6 +407,59 @@ def compare_scenarios(p_a: PolicyParams, p_b: PolicyParams) -> dict:
     return {"rows": rows, "overall": overall, "result_a": ra, "result_b": rb}
 
 
+def check_feasibility(p: PolicyParams) -> list:
+    """
+    현실 제약 검증 — 비현실적 파라미터 조합 감지 (방법 1)
+    수식은 변경하지 않고, 경고/오류 메시지만 반환
+    반환: [{"level": "error"|"warning", "param": str, "msg": str}, ...]
+    """
+    issues = []
+
+    if p.salary_raise > 15:
+        issues.append({"level": "error", "param": "연봉 인상률",
+            "msg": f"연봉 인상 {p.salary_raise:.0f}%는 비현실적입니다. "
+                   f"국내 대기업 평균 3~5%, 최대 10% 수준입니다. "
+                   f"실제 인건비 증가(연 {int(400*7000*p.salary_raise/100):,}만원)가 편익을 크게 초과할 수 있습니다."})
+    elif p.salary_raise > 10:
+        issues.append({"level": "warning", "param": "연봉 인상률",
+            "msg": f"연봉 인상 {p.salary_raise:.0f}%는 높은 수준입니다 (대기업 기준 통상 5~8%)."})
+
+    if p.remote_days_per_week >= 5:
+        issues.append({"level": "error", "param": "재택근무 일수",
+            "msg": "전면 재택(주 5일)은 생산직·영업직(전체 47%)에 적용 불가능합니다. "
+                   "Google·Apple 등 빅테크도 하이브리드로 회귀 중이며, 현실적 상한은 주 2~3일입니다."})
+    elif p.remote_days_per_week >= 4:
+        issues.append({"level": "warning", "param": "재택근무 일수",
+            "msg": f"주 {p.remote_days_per_week:.0f}일 재택은 생산직(전체 38%, 152명) 적용이 어렵습니다."})
+
+    if p.sa_incentive > 30:
+        issues.append({"level": "error", "param": "S고과 인센티브",
+            "msg": f"S인센티브 {p.sa_incentive:.0f}%는 비현실적입니다 (대기업 통상 상한 15~20%)."})
+    elif p.sa_incentive > 20:
+        issues.append({"level": "warning", "param": "S고과 인센티브",
+            "msg": f"S인센티브 {p.sa_incentive:.0f}%는 내부 형평성 이슈가 발생할 수 있습니다."})
+
+    if p.edu_cost_rate > 100:
+        issues.append({"level": "error", "param": "교육비 증가율",
+            "msg": f"교육비 {p.edu_cost_rate:.0f}% 증가는 예산 2배 이상입니다. 현실적 상한은 30~50%입니다."})
+
+    if p.welfare_score > 40:
+        issues.append({"level": "warning", "param": "복지포인트",
+            "msg": f"복지포인트 {p.welfare_score:.0f}% 증가는 예산 부담이 큽니다 (권장: 10~20%)."})
+
+    if p.salary_raise > 8 and p.sa_incentive > 15:
+        issues.append({"level": "warning", "param": "복합(보상 과부하)",
+            "msg": f"연봉 {p.salary_raise:.0f}% + 인센티브 {p.sa_incentive:.0f}% 동시 적용 시 "
+                   f"실제 인건비 부담이 매우 큽니다."})
+
+    if p.remote_days_per_week >= 3:
+        issues.append({"level": "warning", "param": "복합(재택+생산직)",
+            "msg": f"생산직 152명(38%)은 재택 적용 불가. "
+                   f"실질 적용 인원은 248명으로 효과가 축소됩니다."})
+
+    return issues
+
+
 def build_interpretation(res: dict, params: PolicyParams) -> dict:
     """
     실무 해석 가이드 — A안 핵심
