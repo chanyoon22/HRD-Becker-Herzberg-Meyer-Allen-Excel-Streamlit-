@@ -419,7 +419,7 @@ if reset_btn:
 if demo_btn:
     bar = st.progress(0, "데모 실행 중...")
     st.session_state.params      = DEMO_PARAMS
-    st.session_state.policy_text = "【데모】교육비 30% 증액, 연봉 5% 인상, S고과 10% 인센티브, 전부서 유연근무, 멘토링·EAP·사내공모 도입, 월 1회 팀 회고, 비전 공유 연 4회, 주 2일 재택근무"
+    st.session_state.policy_text = "【데모】교육비 30% 증액·연간 교육시간 60시간, 연봉 5% 인상, S고과 10% 인센티브, 전부서 유연근무, 멘토링·EAP·사내공모 도입, 월 1회 팀 회고, 비전 공유 연 4회, 주 2일 재택근무"
     bar.progress(30, "파라미터 로딩...")
     res  = simulate(DEMO_PARAMS)
     bar.progress(60, "분석 중...")
