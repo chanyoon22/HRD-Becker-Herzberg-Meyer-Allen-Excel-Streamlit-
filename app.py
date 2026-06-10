@@ -295,6 +295,7 @@ for k, v in {
     "show_results": False,
     "gemini_feasibility": None,
     "parse_summary": None,
+    "parsing_warning": "",
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -446,9 +447,10 @@ if run_btn:
         bar = st.progress(0, "AI 분석 중...")
         try:
             bar.progress(15, "Gemini가 정책을 읽는 중...")
-            params = parse_policy(policy_input, api_key)
-            st.session_state.params      = params
-            st.session_state.policy_text = policy_input
+            params, parsing_warning = parse_policy(policy_input, api_key)
+            st.session_state.params        = params
+            st.session_state.policy_text   = policy_input
+            st.session_state.parsing_warning = parsing_warning
 
             bar.progress(45, "수식 엔진 계산 중...")
             res = simulate(params)
@@ -496,6 +498,14 @@ if st.session_state.show_results and st.session_state.result:
     # ── Gemini 파싱 결과 요약 (항상 표시) ────────────────────
     if st.session_state.get("parse_summary"):
         st.info(f"📊 **Gemini 파싱 결과** — {st.session_state.parse_summary}")
+
+    # ── 파싱 불가 항목 경고 (있을 때만 표시) ─────────────────
+    if st.session_state.get("parsing_warning"):
+        st.warning(
+            f"⚠️ **일부 입력이 파라미터에 반영되지 않았습니다**\n\n"
+            f"{st.session_state.parsing_warning}\n\n"
+            f"💡 수치(%, 시간, 횟수 등)를 명시하면 더 정확한 결과를 얻을 수 있습니다."
+        )
 
     # ── 현실 제약 경고 배너 ───────────────────────────────────
     feasibility_issues = check_feasibility(params)
