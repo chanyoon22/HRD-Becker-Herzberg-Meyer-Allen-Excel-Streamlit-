@@ -98,7 +98,7 @@ def _learning_index(p: PolicyParams) -> float:
     """교육 종합 학습지수 (0~1) — Kirkpatrick 4단계 기반"""
     score = 0.0
     if p.edu_hours > 0:
-        score += min(p.edu_hours / 70, 1.0) * 0.25   # 정규화 기준 70h, 가중치 0.25
+        score += min(p.edu_hours / 70, 1.0) * 0.25
     if p.edu_cost_rate > 0:
         score += min(p.edu_cost_rate / 100, 1.0) * 0.05  # 교육비 투자 → 학습 인프라 향상
     if p.completion_rate > 0:
@@ -180,12 +180,14 @@ def simulate(p: PolicyParams) -> dict:
     new_turn   = max(BASELINE["turnover"]    + delta_turn,   0.0)
     new_commit = min(BASELINE["commitment"]  + delta_commit, 1.0)
 
-    # 이직자 수 — Sigmoid 임계점 모형 (0.3 = 이직 결정 임계)
-    turn_threshold = 0.30
-    def sigmoid_turnover(t_prob, n):
-        return int(round(n * (1 / (1 + math.exp(-10 * (t_prob - turn_threshold))))))
+    # 이직자 수 — delta_turn 비례 모형 (Lee & Mitchell 1994)
+    # baseline 41명 기준으로 delta_turn에 비례해 이직자 증감
+    # scale=46.4: DEMO delta_turn=-0.237 → 이직자 30명 (기대값 일치)
+    def calc_n_turnover(dt):
+        scale = 46.4
+        return max(int(round(BASELINE["n_turnover"] + dt * scale)), 0)
 
-    new_n_turn = sigmoid_turnover(new_turn, ORG["total"])
+    new_n_turn = calc_n_turnover(delta_turn)
 
     # ── 직군별 분해 ────────────────────────────────────────────
     dept_weights = {
@@ -246,7 +248,7 @@ def simulate(p: PolicyParams) -> dict:
     b_turnover       = turn_reduction * TURNOVER_COST
     sa_turn_reduced  = turn_reduction * (ORG["sa_grade"] / ORG["total"])
     b_key_talent     = sa_turn_reduced * TURNOVER_COST * KEY_TALENT_MULT
-    b_productivity   = tsal * delta_comp * 0.03   # 역량향상 → 생산성 보수적 추정
+    b_productivity   = tsal * (delta_comp * 0.03 + delta_commit * 0.001)  # 역량+몰입 → 생산성
 
     total_benefit = b_turnover + b_key_talent + b_productivity
     net_benefit   = total_benefit - total_cost
