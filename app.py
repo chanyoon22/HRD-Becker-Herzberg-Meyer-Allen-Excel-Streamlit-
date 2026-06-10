@@ -341,12 +341,20 @@ with col_input:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.markdown('<div class="sec-title">⚙️ HR 정책 입력</div>', unsafe_allow_html=True)
     st.markdown('<div class="sec-sub">정책을 자유롭게 서술하세요 — AI가 30개 파라미터로 자동 수치화합니다</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div style="font-size:0.78rem; color:#80CBC4; background:rgba(0,229,255,0.06); '
+        'border-left:3px solid #00E5FF; border-radius:4px; padding:0.5rem 0.75rem; margin-bottom:0.5rem;">'
+        '💡 <b>입력 팁</b> — 연봉·교육비·인센티브 등 수치는 <b>%(퍼센트)</b>로 입력할수록 AI가 정확하게 파악하고 시뮬레이션 효과도 높아집니다. '
+        '(예: "연봉 5% 인상, 교육비 30% 증액"처럼 입력 / "월 20만원 인상" 같은 절대금액은 반영 정확도가 낮아질 수 있습니다)'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     policy_input = st.text_area(
         label="HR 정책 서술",
         value=st.session_state.policy_text,
         height=160,
-        placeholder="예시: 전 직원 주 2회 재택근무 도입, 교육비 30% 증액, S고과자 인센티브 15% 추가 지급, 분기별 팀 회고 운영, 리더 코칭 프로그램 연 40시간...",
+        placeholder="예시: 연봉 5% 인상, 교육비 30% 증액, S고과자 인센티브 15% 지급, 주 2일 재택근무, 멘토링·EAP 도입, 월 1회 팀 회고, 리더 코칭 연 40시간...",
         label_visibility="collapsed",
     )
 
