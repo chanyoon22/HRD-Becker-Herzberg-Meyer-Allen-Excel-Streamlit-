@@ -26,6 +26,54 @@ st.set_page_config(
 )
 
 # ──────────────────────────────────────────────────────────────────
+# 접근 제어 — 비밀번호 인증
+# ──────────────────────────────────────────────────────────────────
+_APP_PW = ""
+try:
+    _APP_PW = st.secrets.get("APP_PASSWORD", "")
+except Exception:
+    _APP_PW = ""
+
+if _APP_PW:  # secrets에 APP_PASSWORD가 설정된 경우에만 인증 활성화
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        st.markdown("""
+        <style>
+        .auth-wrap {
+          max-width: 420px; margin: 8rem auto; padding: 2.5rem;
+          background: rgba(13,27,42,0.95);
+          border: 1px solid rgba(0,229,255,0.25);
+          border-radius: 16px; text-align: center;
+        }
+        .auth-title { font-size: 1.8rem; font-weight: 800;
+                      color: #00E5FF; margin-bottom: 0.3rem; }
+        .auth-sub { font-size: 0.9rem; color: #607D8B; margin-bottom: 1.5rem; }
+        </style>
+        <div class="auth-wrap">
+          <div class="auth-title">🔬 HRD Policy Simulator</div>
+          <div class="auth-sub">접속하려면 코드를 입력하세요</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        pw_input = st.text_input(
+            "접속 코드",
+            type="password",
+            placeholder="접속 코드 입력",
+            label_visibility="collapsed",
+        )
+        col_btn, _, _ = st.columns([1, 2, 1])
+        with col_btn:
+            if st.button("입장", use_container_width=True):
+                if pw_input == _APP_PW:
+                    st.session_state.authenticated = True
+                    st.rerun()
+                else:
+                    st.error("접속 코드가 올바르지 않습니다.")
+        st.stop()  # 인증 전엔 나머지 앱 실행 완전 차단
+
+# ──────────────────────────────────────────────────────────────────
 # 전역 CSS
 # ──────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -246,6 +294,7 @@ for k, v in {
     "proposal_text": None,
     "show_results": False,
     "gemini_feasibility": None,
+    "parse_summary": None,
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -360,7 +409,7 @@ if reset_btn:
         time.sleep(0.05); bar.progress(i)
     for k in ["result","params","interp","sensitivity","policy_text",
               "result_b","params_b","scenario_cmp","proposal_text",
-              "show_results","gemini_feasibility"]:
+              "show_results","gemini_feasibility","parse_summary"]:
         st.session_state[k] = None if k != "policy_text" else ""
     st.session_state.show_results = False
     bar.empty()
@@ -414,18 +463,17 @@ if run_btn:
             st.session_state.interp      = interp
             st.session_state.sensitivity = sens
             st.session_state.show_results= True
-            bar.progress(100); bar.empty()
-
-            # Gemini 파싱 결과 핵심 파라미터 요약 표시
-            st.info(
-                f"📊 **Gemini 파싱 결과** — "
+            # 파싱 결과 세션 저장 (rerun 후에도 보이게)
+            st.session_state.parse_summary = (
                 f"연봉인상: {params.salary_raise}% | "
                 f"교육비: {params.edu_cost_rate}% | "
                 f"S인센티브: {params.sa_incentive}% | "
                 f"재택: 주{params.remote_days_per_week}일 | "
+                f"멘토링: {params.mentoring} | "
+                f"EAP: {params.eap} | "
                 f"문화범위: {params.culture_scope or '미입력'}"
             )
-            st.success("✅ 분석 완료!")
+            bar.progress(100); bar.empty()
             st.rerun()
         except Exception as e:
             bar.empty()
@@ -443,6 +491,10 @@ if st.session_state.show_results and st.session_state.result:
     cmp    = st.session_state.scenario_cmp
 
     st.divider()
+
+    # ── Gemini 파싱 결과 요약 (항상 표시) ────────────────────
+    if st.session_state.get("parse_summary"):
+        st.info(f"📊 **Gemini 파싱 결과** — {st.session_state.parse_summary}")
 
     # ── 현실 제약 경고 배너 ───────────────────────────────────
     feasibility_issues = check_feasibility(params)
