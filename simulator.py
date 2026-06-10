@@ -98,7 +98,9 @@ def _learning_index(p: PolicyParams) -> float:
     """교육 종합 학습지수 (0~1) — Kirkpatrick 4단계 기반"""
     score = 0.0
     if p.edu_hours > 0:
-        score += min(p.edu_hours / 80, 1.0) * 0.30
+        score += min(p.edu_hours / 70, 1.0) * 0.25   # 정규화 기준 70h, 가중치 0.25
+    if p.edu_cost_rate > 0:
+        score += min(p.edu_cost_rate / 100, 1.0) * 0.05  # 교육비 투자 → 학습 인프라 향상
     if p.completion_rate > 0:
         score += min(p.completion_rate / 100, 1.0) * 0.20
     if p.ojt_ratio > 0:

@@ -467,6 +467,7 @@ if run_btn:
             st.session_state.parse_summary = (
                 f"연봉인상: {params.salary_raise}% | "
                 f"교육비: {params.edu_cost_rate}% | "
+                f"교육시간: {params.edu_hours}h | "
                 f"S인센티브: {params.sa_incentive}% | "
                 f"재택: 주{params.remote_days_per_week}일 | "
                 f"멘토링: {params.mentoring} | "
