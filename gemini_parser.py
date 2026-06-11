@@ -156,7 +156,10 @@ def parse_policy(policy_text: str, api_key: str) -> tuple:
         resp = httpx.post(GEMINI_URL, json=body, headers=headers, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        raw  = data["candidates"][0]["content"]["parts"][0]["text"]
+        candidates = data.get("candidates", [])
+        if not candidates or "content" not in candidates[0]:
+            raise RuntimeError("Gemini 응답이 안전 필터에 의해 차단되었습니다. 입력 내용을 수정해 주세요.")
+        raw = candidates[0]["content"]["parts"][0]["text"]
 
         cleaned = _clean_json(raw)
 
@@ -248,12 +251,12 @@ DEMO_PARAMS = PolicyParams(
     online_ratio=40,
     completion_rate=85,
     ojt_ratio=30,
-    salary_raise=5,
-    sa_incentive=10,
-    a_incentive=5,
-    promotion_shortcut=1,
-    welfare_score=20,
-    market_salary_pct=110,
+    salary_raise=0,          # 보상비용이 ROI에 포함되므로 DEMO는 비금전 정책 조합으로 구성
+    sa_incentive=0,
+    a_incentive=0,
+    promotion_shortcut=2,    # 승진 단축 강화 (1→2년)
+    welfare_score=30,        # 복지 강화 (20→30)
+    market_salary_pct=120,   # 시장 대비 연봉 경쟁력 (110→120)
     culture_scope="전부서",
     mentoring="예",
     idea_system="예",

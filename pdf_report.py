@@ -81,9 +81,11 @@ def generate_pdf(
     C_WHITE   = colors.white
 
     def sty(name, size, bold=False, color=None, align="LEFT", leading=None):
+        # NanumGothic Bold TTF가 없으면 일반 폰트 사용 (bold는 <b> 태그로 처리)
+        fname = font
         return ParagraphStyle(
             name,
-            fontName=font if not bold else font,
+            fontName=fname,
             fontSize=size,
             textColor=color or C_NAVY,
             alignment={"LEFT": 0, "CENTER": 1, "RIGHT": 2}.get(align, 0),
@@ -262,17 +264,17 @@ def generate_pdf(
     ben  = result["benefit"]
     cost_rows = [
         ["항목", "금액 (만원)", "구분"],
-        ["① 교육비 증가분",   f"{cost['edu_total']:,}",     "비용"],
-        ["② 문화 프로그램",   f"{cost['culture_total']:,}", "비용"],
-        ["── 총 비용",        f"{cost['total']:,}",          "📌 비용 합계"],
-        ["③ 보상 인상 (참고)",f"{cost['salary_ref']:,}",    "참고"],
-        ["④ S/A 인센티브(참고)",f"{cost['incentive_ref']:,}","참고"],
-        ["⑤ 이직비용 절감",   f"{ben['turnover_saving']:,}", "편익"],
-        ["⑥ 핵심인재 잔류",   f"{ben['key_talent']:,}",    "편익"],
-        ["⑦ 생산성 이득",     f"{ben['productivity']:,}",  "편익"],
-        ["── 총 편익",        f"{ben['total']:,}",          "✅ 편익 합계"],
-        ["💵 순편익 (편익-비용)", f"{result['net_benefit']:,}", "순편익"],
-        ["🏆 NET ROI",         f"{result['roi']:.1f}%",     "ROI"],
+        ["① 교육비 증가분",        f"{cost['edu_total']:,}",      "비용"],
+        ["② 문화 프로그램",        f"{cost['culture_total']:,}",  "비용"],
+        ["③ 연봉 인상 비용",       f"{cost['salary_cost']:,}",    "비용"],
+        ["④ 인센티브 비용",        f"{cost['incentive_cost']:,}", "비용"],
+        ["── 총 비용",             f"{cost['total']:,}",          "📌 비용 합계"],
+        ["⑤ 이직비용 절감",        f"{ben['turnover_saving']:,}", "편익"],
+        ["⑥ 핵심인재 잔류",        f"{ben['key_talent']:,}",     "편익"],
+        ["⑦ 생산성 이득",          f"{ben['productivity']:,}",   "편익"],
+        ["── 총 편익",             f"{ben['total']:,}",           "✅ 편익 합계"],
+        ["💵 순편익 (편익-비용)",  f"{result['net_benefit']:,}",  "순편익"],
+        ["🏆 NET ROI",             f"{result['roi']:.1f}%",       "ROI"],
     ]
     t3 = Table(cost_rows, colWidths=[6*cm, 4*cm, 7*cm])
     t3.setStyle(TableStyle([
@@ -281,7 +283,7 @@ def generate_pdf(
         ("BACKGROUND",(0,0), (-1,0), C_PANEL),
         ("TEXTCOLOR", (0,0), (-1,0), C_CYAN),
         ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#F5F7FA")]),
-        ("BACKGROUND",(0,3), (-1,3), colors.HexColor("#E3F2FD")),
+        ("BACKGROUND",(0,5), (-1,5), colors.HexColor("#E3F2FD")),
         ("BACKGROUND",(0,9), (-1,9), colors.HexColor("#E8F5E9")),
         ("BACKGROUND",(0,10),(-1,10),colors.HexColor("#FFF8E1")),
         ("BACKGROUND",(0,11),(-1,11),colors.HexColor("#E0F7FA")),

@@ -13,7 +13,7 @@ from simulator import (
     PolicyParams, simulate, sensitivity_analysis,
     compare_scenarios, build_interpretation, check_feasibility, BASELINE, ORG
 )
-from gemini_parser import parse_policy, DEMO_PARAMS, DEMO_SCENARIO_B
+from gemini_parser import parse_policy, DEMO_PARAMS, DEMO_SCENARIO_B, GEMINI_MODEL, GEMINI_URL
 
 # ──────────────────────────────────────────────────────────────────
 # 페이지 설정
@@ -418,8 +418,9 @@ if reset_btn:
         time.sleep(0.05); bar.progress(i)
     for k in ["result","params","interp","sensitivity","policy_text",
               "result_b","params_b","scenario_cmp","proposal_text",
-              "show_results","gemini_feasibility","parse_summary"]:
-        st.session_state[k] = None if k != "policy_text" else ""
+              "show_results","gemini_feasibility","parse_summary",
+              "parsing_warning"]:
+        st.session_state[k] = None if k not in ("policy_text","parsing_warning") else ""
     st.session_state.show_results = False
     bar.empty()
     st.success("✅ 초기화 완료")
@@ -899,7 +900,7 @@ if st.session_state.show_results and st.session_state.result:
 }}"""
 
                         resp = _httpx.post(
-                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+                            GEMINI_URL,
                             json={
                                 "contents": [{"parts": [{"text": feasibility_prompt}]}],
                                 "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2000},
@@ -909,7 +910,11 @@ if st.session_state.show_results and st.session_state.result:
                             timeout=45,
                         )
                         resp.raise_for_status()
-                        raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                        resp_json = resp.json()
+                        candidates = resp_json.get("candidates", [])
+                        if not candidates or "content" not in candidates[0]:
+                            raise RuntimeError("Gemini 응답이 안전 필터에 의해 차단되었습니다.")
+                        raw = candidates[0]["content"]["parts"][0]["text"]
 
                         # JSON 파싱 (gemini_parser의 _clean_json 재사용)
                         import re as _re, json as _json
@@ -1147,12 +1152,12 @@ if st.session_state.show_results and st.session_state.result:
             else:
                 st.info("비용 항목이 없습니다. 파라미터를 입력하세요.")
 
-            st.markdown(f"""
-            <div style="font-size:0.85rem; color:#607D8B; margin-top:0.5rem;">
-            참고 (ROI 산식 별도): 보상 인상 {cost['salary_ref']:,}만원 / S·A 인센 {cost['incentive_ref']:,}만원
-            </div>
-            """, unsafe_allow_html=True)
-
+            if cost.get("salary_cost", 0) > 0 or cost.get("incentive_cost", 0) > 0:
+                st.markdown(f"""
+                <div style="font-size:0.85rem; color:#607D8B; margin-top:0.5rem;">
+                💡 연봉 인상 비용 {cost.get('salary_cost',0):,}만원 / 인센티브 비용 {cost.get('incentive_cost',0):,}만원 포함
+                </div>
+                """, unsafe_allow_html=True)
         with b_col:
             st.markdown("**✅ 편익 항목 내역**")
             ben_items = [
@@ -1522,7 +1527,7 @@ if st.session_state.show_results and st.session_state.result:
 지금 바로 완성된 제안서 본문을 작성하세요. 설명이나 메타 언급 없이 제안서 그 자체만 출력하세요.
 """
                         resp = httpx.post(
-                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+                            GEMINI_URL,
                             json={"contents": [{"parts": [{"text": prompt}]}],
                                   "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4000}},
                             headers={"Content-Type": "application/json", "x-goog-api-key": key_to_use},
@@ -1530,7 +1535,10 @@ if st.session_state.show_results and st.session_state.result:
                         )
                         resp.raise_for_status()
                         data = resp.json()
-                        text = data["candidates"][0]["content"]["parts"][0]["text"]
+                        candidates = data.get("candidates", [])
+                        if not candidates or "content" not in candidates[0]:
+                            raise RuntimeError("Gemini 응답이 안전 필터에 의해 차단되었습니다.")
+                        text = candidates[0]["content"]["parts"][0]["text"]
                         st.session_state.proposal_text = text
                         st.rerun()
                     except Exception as e:

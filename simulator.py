@@ -185,6 +185,7 @@ def simulate(p: PolicyParams) -> dict:
     # scale=46.4: DEMO delta_turn=-0.237 → 이직자 30명 (기대값 일치)
     def calc_n_turnover(dt):
         scale = 46.4
+        dt = max(dt, -0.90)   # d_turn 하한: 극단값 방지 (Lee & Mitchell 1994)
         return max(int(round(BASELINE["n_turnover"] + dt * scale)), 0)
 
     new_n_turn = calc_n_turnover(delta_turn)
@@ -235,13 +236,13 @@ def simulate(p: PolicyParams) -> dict:
     c_internal = n * (p.internal_posting_ratio / 100) * 30 if p.internal_posting_ratio > 0 else 0
     c_culture_total = c_eap + c_mentor + c_idea + c_vision + c_wlb + c_team + c_coach + c_remote + c_internal
 
-    total_cost = c_edu_total + c_culture_total
-
-    # 보상 비용 (참고용, ROI 산식 별도)
+    # 보상 비용 (ROI 산식에 포함)
     c_salary_ref    = tsal * (p.salary_raise / 100) if p.salary_raise > 0 else 0
     c_incentive_ref = ORG["sa_grade"] * ORG["avg_salary"] * (
         (p.sa_incentive + p.a_incentive) / 200
     ) if (p.sa_incentive + p.a_incentive) > 0 else 0
+
+    total_cost = c_edu_total + c_culture_total + c_salary_ref + c_incentive_ref
 
     # 편익
     turn_reduction   = max(BASELINE["n_turnover"] - new_n_turn, 0)
@@ -287,9 +288,9 @@ def simulate(p: PolicyParams) -> dict:
         "cost": {
             "edu_total":       round(c_edu_total),
             "culture_total":   round(c_culture_total),
+            "salary_cost":     round(c_salary_ref),
+            "incentive_cost":  round(c_incentive_ref),
             "total":           round(total_cost),
-            "salary_ref":      round(c_salary_ref),
-            "incentive_ref":   round(c_incentive_ref),
             "breakdown": {
                 "교육비 증가":  round(c_edu),
                 "IDP 지원비":   round(c_idp),
@@ -303,6 +304,8 @@ def simulate(p: PolicyParams) -> dict:
                 "팀빌딩":       round(c_team),
                 "리더코칭":     round(c_coach),
                 "재택인프라":   round(c_remote),
+                "연봉인상":     round(c_salary_ref),
+                "인센티브":     round(c_incentive_ref),
             }
         },
         "benefit": {
