@@ -115,7 +115,7 @@ http://localhost:8501
 | **AI** | Google Gemini 2.5 Flash API |
 | **수식 엔진** | Python (math, dataclasses) |
 | **PDF 생성** | ReportLab (한글 NanumGothic 폰트) |
-| **데이터** | 400명 합성 데이터 (Seed=42, SK하이닉스 조직구조 기반) |
+| **데이터** | 400명 합성 데이터 (Seed=42, 기업 벤치마킹) |
 
 ---
 
