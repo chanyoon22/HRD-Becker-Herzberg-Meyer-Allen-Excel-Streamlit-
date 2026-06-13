@@ -3,7 +3,7 @@
 **HR 정책의 효과를 AI와 이론 수식으로 정량화하는 조직 시뮬레이터**
 
 > Becker(1964) 인적자본론 × Herzberg(1968) 2요인론 × Meyer & Allen(1991) 몰입 모형  
-> 박찬윤 | 삼육대학교 | 대기업 HRD/HR 직무 취업 포트폴리오
+> 박찬윤 | 삼육대학교 | HRD/HR 포트폴리오
 
 ---
 
@@ -173,7 +173,6 @@ http://localhost:8501
 
 **박찬윤**  
 삼육대학교  
-대기업 HRD/HR 직무 취업 준비 중
 
 [![GitHub](https://img.shields.io/badge/GitHub-chanyoon22-181717?logo=github)](https://github.com/chanyoon22)
 
